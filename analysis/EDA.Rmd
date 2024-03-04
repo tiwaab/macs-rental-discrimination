@@ -1,0 +1,325 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+## EDA
+
+
+```{r}
+library(tidyverse)
+library(haven)
+library(colorspace)
+library(ggridges)
+library(ggthemes)
+library(gtsummary)
+library(tidyr)
+library(broom)
+library(ggplot2)
+```
+
+```{r}
+# set default figure parameters for knitr
+knitr::opts_chunk$set(
+  fig.width = 8, fig.asp = 0.618, fig.retina = 2, dpi = 150, out.width = "60%"
+)
+# dplyr print min and max
+options(dplyr.print_max = 10, dplyr.print_min = 10)
+```
+
+## DATA WRANGLING
+
+```{r}
+# Load assignment data that has characteristics of each tester. Might have multiple rows for a single tester
+tester.data <- read_sas("../data/HDS_raw_data/assignment.sas7bdat", col_select = c("CONTROL", "TESTERID", "ARACE1", "TSEX"))
+# Filter tester data to only African-Americans (AAs)
+aa.tester.data <- tester.data %>% filter(ARACE1 == 2)
+
+# Load skin color data. I'll use skin color to be consistent with the research paper that inspired the project
+skin.color.data <- read_sas("../data/HDS_intermediate_data/skintone.sas7bdat")
+# Inner join skin color data to tester data. Inner join because I don't want anyone without skin color data
+aa.tester.data <- inner_join(aa.tester.data, skin.color.data, by = c("TESTERID" = "TesterID"))
+```
+
+```{r}
+# Assess discrimination based on the following six outcomes that were also used in the paper. Two categories: monetary and non-monetary
+# Some outcomes had flags that already made the comparison but others have to be coded here
+outcome <- c(
+  "CONTROL",
+  "advrent_inc_min", # Rent for Advertised Unit Higher for Minority Tester  
+  "advdepst_inc_min", # Deposit for Advertised Unit Higher for Minority Tester
+  "rusptot_inc_wht", # Better Incentives for White Tester
+  "totaval_inc_wht", # More Units Available to White Tester
+  "min_rcredchk", # Agent Said Credit Check Required, Minority Tester
+  "wht_rcredchk", # Agent Said Credit Check Required, White Tester
+  "min_rcrimchk", # Agent Said Criminal Check Required, Minority Tester
+  "wht_rcrimchk", # Agent Said Criminal Check Required, White Tester
+  "site"
+)
+
+# Load intermediate rental data.  Each record represents one completed test that passed quality review.
+# Only load the relevant columns as this is a very large file
+rental.int.data <- read_sas("../data/HDS_intermediate_data/rental_intermediate.sas7bdat", col_select = all_of(outcome))
+```
+
+```{r}
+# Create 2 flags that are equal to 1 if only the minority tester was subjected to discrimination. 
+rental.int.data <- rental.int.data %>%
+  mutate(min_only_credit = case_when(min_rcredchk == 1 & wht_rcredchk == 0 ~ 1, TRUE ~ 0),
+         min_only_criminal = case_when(min_rcrimchk == 1 & wht_rcrimchk == 0 ~ 1, TRUE ~ 0))
+```
+
+```{r}
+# Min-max normalization function
+min_max_normalize <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+
+# Create normalized composite score of discrimination that is the sum of all the dependent variables in the data scaled to a value between 0 and 1
+rental.int.data <- rental.int.data %>%
+  mutate(disc_score = rowSums(across(-c("CONTROL", "min_rcredchk", "wht_rcredchk", "min_rcrimchk", "wht_rcrimchk", "site")), na.rm = TRUE),
+         disc_score_norm = min_max_normalize(disc_score), 
+         discrimination = ifelse(disc_score_norm > 0, 1, 0)
+         ) 
+```
+
+```{r}
+# Inner join tester data to rental data 
+aa.tester.data <- inner_join(aa.tester.data, rental.int.data, by = "CONTROL")
+```
+
+```{r}
+# Create new fields for reconfigure sex and skin tone variable
+
+# Remove rows where skin_color is 1 = Light because there are only 6 testers
+aa.tester.data <- aa.tester.data %>%
+  filter(Skintone != 1)
+
+aa.tester.data <- aa.tester.data %>%
+  mutate(sex = case_when(TSEX == 0 ~ "Female", TSEX == 1 ~ "Male"),
+         skin_color = factor(Skintone, levels = c(2, 3, 4), labels = c("Somewhat Light", "Somewhat Dark", "Dark")))
+
+```
+
+**How many testers are there in my sample? By skin color and by
+gender?** Not very balanced by sex AND skin color. More somewhat dark
+and dark. More somewhat dark women and more dark men.
+
+```{r}
+# aa.tester.data %>% select(sex, skin_color) %>% tbl_summary(by = sex, percent = "row") %>% add_overall() %>% add_n()
+aa.tester.data %>%  
+tbl_cross(
+    row = skin_color,
+    col = sex,
+    percent = "cell"
+  ) 
+
+```
+
+**Summary table of score values**
+
+```{r}
+aa.tester.data %>%
+  group_by(sex, skin_color) %>%
+  summarise(mean_disc_score = mean(disc_score_norm, na.rm = TRUE),
+            median_disc_score = median(disc_score_norm, na.rm = TRUE),
+            min_score = min(disc_score_norm, na.rm = TRUE),
+            max_score = max(disc_score_norm, na.rm = TRUE),
+            .groups = "drop")
+```
+
+## PLOTS
+
+```{r}
+custom_theme <- theme_wsj() +
+  theme(
+    # Plot titles
+    plot.title = element_text(size = 20, face = "bold"),
+    plot.subtitle = element_text(size = 10, margin = margin(b = 20)),
+    
+    axis.title.x = element_text(size = 10, margin = margin(t = 20)),
+    axis.text.x = element_text(size = 8),
+    
+    axis.text.y = element_text(size = 8),
+    
+    # axis.line = element_line(arrow = arrow(type='closed', length = unit(5,'pt'))), 
+    
+    legend.position = "none"
+  )
+
+theme_set(custom_theme)
+```
+
+### SKIN COLOR AND DISCRIMINATION CHART
+
+What question do I want this chart to answer? - Does the severity and
+incidence of discrimination differ by skin tone
+
+```{r}
+
+p <- ggplot(aa.tester.data, aes(x = disc_score_norm, y = skin_color, fill = skin_color)) +
+     geom_density_ridges(alpha = 0.8, color = "orange3") +
+     scale_fill_manual(values = c("#FDE39C", "#f18d3f", "#7c4236")) + 
+     labs(
+         x = "Discrimination Score", 
+         y = "Tester Skin Color",
+         title = "Colorism and Rental Discrimination",
+         subtitle = "Does a tester's skin color impact the discrimination they face?",
+         caption = "Source: HUD Housing Discrimination Against Racial And Ethnic Minorities 2012 Dataset"
+         ) 
+
+p + theme(plot.caption = element_text(size = 5, color = "gray", margin = margin(t = 15))) +
+  scale_x_continuous(limits = c(-0.19, 0.75), labels = c("Very Low","Low", "Moderate", "High", "Extreme"))
+
+# ggsave("../plots/colorism-x-discrimination.png")
+
+```
+
+### SEX AND DISCRIMINATION CHART
+
+What question do I want this chart to answer? - Which sex deals with
+more severe discrimination?
+
+```{r}
+# Sex discrimination dumbbell plot
+
+# Create summary table on sex
+sex_df <-
+  aa.tester.data %>%
+  group_by(sex) %>%
+  summarise(avg_score = mean(disc_score_norm, na.rm = TRUE),
+            count = sum(discrimination, na.rm = TRUE),
+            total = n(),
+            prop = count/total)
+
+sex_df %>% 
+  pivot_longer(sex) %>%
+  ggplot(aes(x=avg_score, y=name)) +
+  geom_line(aes(group=name), color="gray", linewidth=3.5) +
+  geom_point(aes(color=value), size=7) +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values=c("#682d50", "#c4cc84")) +
+   labs(
+         x = "Discrimination"
+   )
+
+```
+
+### SEX,SKIN COLOR AND DISCRIMINATION CHART
+
+```{r}
+# Create summary table on sex
+sex_color_df <-
+  aa.tester.data %>%
+  group_by(sex, skin_color) %>%
+  summarise(avg_score = mean(disc_score_norm, na.rm = TRUE),
+            count = sum(discrimination, na.rm = TRUE),
+            total = n(),
+            prop = count/total,
+            .groups = "drop")
+
+# To gap or not to gap?
+female_scores <- sex_color_df$avg_score[sex_color_df$sex == "Female"]
+male_scores <- sex_color_df$avg_score[sex_color_df$sex == "Male"]
+gap <- round(abs(male_scores - female_scores), 2)
+
+sex_color_df %>%
+  pivot_longer(skin_color) %>%  
+  ggplot(aes(x=avg_score, y=value)) +
+  geom_line(aes(group=value), color="gray", linewidth=3.5) +
+  geom_point(aes(color=sex), size=7) + 
+  geom_text(aes(label=sex, color=sex), data=. %>% filter(value=="Dark"), nudge_y =.2, fontface="bold") +
+  scale_color_manual(values=c("#682d50", "#c4cc84")) +
+  labs( title = "How do gender and skin color 
+        impact discrimination?",
+        x = "Mean Discrimination Score (0-1)") 
+
+
+
+
+```
+
+
+
+Do a chi squared to see if statistically significant
+
+honeycomb monetarry and non monetary- color by gender and skin
+
+```{r}
+monetary_outcomes <- c( "advrent_inc_min", 
+                        "advdepst_inc_min", 
+                        "rusptot_inc_wht"
+                        )
+
+nonmonetary_outcomes <- c("totaval_inc_wht",
+                          "min_only_credit",
+                          "min_only_criminal"
+                          )
+aa.tester.data <- aa.tester.data %>%
+  mutate(
+         mon_disc_score = rowSums(across(all_of(monetary_outcomes)), na.rm = TRUE),
+         mon_score_norm = min_max_normalize(mon_disc_score),
+         nm_disc_score = rowSums(across(all_of(nonmonetary_outcomes)), na.rm = TRUE),
+         nm_score_norm = min_max_normalize(nm_disc_score)
+         )
+
+
+aa.tester.data %>%
+  group_by(skin_color) %>%
+  summarise(mean_mon_score = mean(mon_score_norm, na.rm = TRUE),
+            mean_nm_score = mean(nm_score_norm, na.rm = TRUE),
+            .groups = "drop")
+```
+
+```{r}
+ggplot(aa.tester.data, aes(x = mon_disc_score, y = nm_disc_score, color = skin_color, alpha = 0.8)) + 
+  geom_jitter(size = 1.5) +
+  facet_grid(cols = vars(skin_color), rows = vars(sex)) +
+  scale_color_manual(values = c("Somewhat Light" = "#b19f6d", "Somewhat Dark" = "#f18d3f", "Dark" = "#7c4236"))
+
+```
+
+```{r}
+# aa.tester.data %>% count(site, sort = TRUE)
+
+northern_cities <- c("BT", "BN", "CH", "CL", "DT", "MS", "NO", "NT", "NY", "OC", "PD", "RS", "ST", "LA", "SD", "SJ")
+southern_cities <- c("AT", "AQ", "CO", "DL", "FW", "GB", "HS", "MI", "SA", "TP", "KC", "RM")
+
+aa.tester.data <- aa.tester.data %>% mutate(north_south = ifelse(site %in% northern_cities, "Northern", "Southern"))
+
+table(aa.tester.data$north_south)
+
+```
+
+```{r}
+ggplot(aa.tester.data, aes(x = mon_disc_score, y = nm_disc_score, color = skin_color, alpha = 0.8)) + 
+  geom_jitter(size = 1.5) +
+  facet_grid(cols = vars(skin_color), rows = vars(north_south)) +
+  # theme(legend.position = "bottom", axis.title.y = element_text(size = 10)) +
+  scale_color_manual(values = c("Somewhat Light" = "#b19f6d", "Somewhat Dark" = "#f18d3f", "Dark" = "#7c4236"))
+
+```
+
+```{r}
+ggplot(aa.tester.data, aes(x = mon_disc_score, y = nm_disc_score, color = site)) + 
+  geom_jitter() +
+  facet_grid(cols = vars(skin_color), rows = vars(sex)) +
+  theme(legend.position = "bottom") 
+```
+
+
+```{r}
+aa.tester.data %>%
+table(aa.tester.data$sex, aa.tester.data$skin_color)
+```
+```{r}
+chisq.test(table(aa.tester.data$sex, aa.tester.data$skin_color))
+```
+```{r}
+# Save aa tester data to use in shiny app
+saveRDS(aa.tester.data, file = "shiny/aa_tester_data.rds")
+```
+

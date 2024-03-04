@@ -1,0 +1,59 @@
+---
+title: "Research Paper"
+output: html_document
+date: "2024-02-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Unraveling Colorism and Gender Disparities in Rental Housing Discrimination: Insights from HUD's Housing and Discrimination Audit Study**
+
+## **Introduction**
+
+In recent years, seismic shifts in housing tenure patterns have characterized the choices made by millennials and Gen Z, as they increasingly lean toward renting over homeownership. This trend is deeply rooted in multifaceted economic, cultural, and lifestyle considerations. This paper embarks on an exploration of the intricate interplay between colorism, gender dynamics, and rental housing discrimination, drawing upon insights from the 2020 U.S. Department of Housing and Urban Development's (HUD) Housing and Discrimination Audit Study. This federally mandated study holds paramount importance as it aligns with the objectives laid out in the Fair Housing Act of 1968, emphasizing the need for fair and equitable housing opportunities for all.
+
+Economic determinants wield significant influence over housing choices, especially among younger generations. The burden of student loan debt, coupled with job market fluctuations and stagnant wages, forms formidable barriers to accumulating the funds necessary for homeownership. This economic landscape lays the groundwork for a pronounced preference for rental housing among millennials and Gen Z. Furthermore, cultural shifts, including delayed milestones such as marriage and family formation, underscore a generational ethos prioritizing experiences and adaptability.
+
+This study places a lens on the role of colorism and gender in the domain of rental housing discrimination. The central research question guiding this investigation is: What role do colorism and gender play in rental housing discrimination?
+
+The backdrop of minority homeownership disparities must be acknowledged. Historical inequities persist, rendering minorities less likely to own homes to begin with. This overarching trend amplifies the significance of the rising numbers of millennials and Gen Z choosing to rent, highlighting the need for an inclusive and comprehensive examination of the challenges faced by marginalized communities in securing housing.
+
+## Methods
+
+![](plots/colorism-x-discrimination.png)
+
+I chose to present the analysis of colorism and rental discrimination as a ridgeline plot as it has both practical and communicative advantages. The ridgeline plot, also known as a joyplot, offers a visually compelling depiction of variable distributions, enabling a nuanced exploration of the intersectionality of colorism within housing outcomes.
+
+This visualization tool is particularly apt as it allows for the simultaneous presentation of multiple distributions, offering a comparative analysis across different groups within the dataset. In the context of colorism, where skin tone variations contribute to diverse experiences, the plot provides a visual model of how the shade of an applicant's skin, here represented using deliberately chosen shades ranging from a cream color to dark brown, influence rental housing discrimination outcomes.
+
+Beyond its analytical utility, the aesthetic appeal enhances its effectiveness as a storytelling tool, engaging viewers in the complexities of colorism and making the analysis accessible.
+
+![](plots/colorism-x-gender-x-discrimination.png)
+
+For my analysis of the intersection of gender, skin tone and rental discrimination, I chose to use a faceted, stacked histogram although ultimately in the final project, I hope to use a dumbbell plot instead.
+
+The faceted approach enables a simultaneous examination of multiple dimensions within the dataset, specifically colorism and gender. This allows for a nuanced exploration of how these factors intersect in shaping rental discrimination outcomes. Each facet in the histogram represents a unique combination of colorism and gender, facilitating a comparative analysis to identify patterns and disparities across various categories.
+
+Stacking the histograms provides a clear visual comparison of outcome distributions, elucidating the relative contributions of colorism and gender to overall trends. This visual clarity aids in interpreting complex data, ensuring that viewers can focus on specific combinations of colorism and gender without visual clutter.
+
+The faceted stacked histogram also serves as a storytelling tool, allowing researchers to construct a cohesive narrative about the intricate relationships within the data. The progression from one facet to another forms a visual storyline that engages the audience in understanding how colorism and gender intersect and influence rental discrimination outcomes.
+
+In embracing the concept of intersectionality, this visualization method aligns with the understanding that individuals' experiences result from the complex interplay of multiple factors. By visually capturing this intersectionality, the analysis seeks to provide a comprehensive, comparative, and accessible exploration of the intricate relationships between colorism, gender, and rental discrimination within the dataset.
+
+## Results
+
+In alignment with Alberto Cairo's principles of effective data visualization, these plots aspire to be truthful, ensuring accurate representation of the underlying data. They are designed to be functional, facilitating a clear understanding of the complex relationships between colorism, gender, and rental discrimination. Striving for aesthetic appeal, the plots aim to be beautiful, engaging viewers and enhancing comprehension. Insightful in nature, they unravel nuanced patterns, contributing to a deeper understanding of the subject matter. With an overarching goal of enlightenment, these plots seek to shed light on the intricate intersections within the dataset, fostering informed discussions and prompting meaningful insights.
+
+
+Feedback received:
+  - Improve submission and general file format
+  - Include a visualization for chart 3
+  - Plot 1: Very aesthetic looking graph, but it is difficult to read the graph. My sense is that you're comparing different     distributions but it's hard to compare when the distributions have different starting points on the y-axis. 
+  - Plot 2: Almost perfect graph, but I think you should choose a darker color for the "light" category - it's hard to see.
+  
+Response:
+    For the final project, I will confirm and if necessary reconfigure the data I'm using so that the distributions for each skin tone group line up realistically. I suspect that my current interpretation might be incorrect or I have incorrectly coded some variable.
+    The second plot has been redone as lollipop plot. I made this decision as I think it does a better job highlighting the difference between discrimination by gender and skin tone.
+    Based on the revelations made in my 2nd plot, I've decided that for my 3rd plot I will include a gender dis-aggregated look at rental housing discrimination as it seems there might be some differences in how renters are treated based on their gender. 

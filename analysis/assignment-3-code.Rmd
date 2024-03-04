@@ -1,0 +1,171 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+library(tidyverse)
+library(haven)
+library(colorspace)
+library(ggridges)
+library(ggthemes)
+```
+
+
+```{r}
+# Load assignment data that has characteristics of each tester. Might have multiple rows for a single tester
+tester.data <- read_sas("data/HDS_raw_data/assignment.sas7bdat", col_select = c("CONTROL", "TESTERID", "ARACE1", "TSEX"))
+
+# Filter tester data to only AAs
+aa.tester.data <- tester.data %>% filter(ARACE1 == 2)
+```
+
+
+```{r}
+# Load skin tone data
+skin.tone.data <- read_sas("data/HDS_intermediate_data/skintone.sas7bdat")
+
+# Inner join skin tone data to tester data
+aa.tester.data <- inner_join(aa.tester.data, skin.tone.data, by = c("TESTERID" = "TesterID"))
+```
+
+
+```{r}
+# Narrow down the list of dependent variables to make analysis more manageable 
+disc.cols <- c(
+  "CONTROL",
+  "advrent_inc_min", # Rent for Advertised Unit Higher for Minority Tester  
+  "advdepst_inc_min", # Deposit for Advertised Unit Higher for Minority Tester
+  "totaval_inc_wht", # More Units Available to White Tester
+  "rusptot_inc_wht", # Better Incentives for White Tester
+  "min_rcredchk", # Agent Said Credit Check Required, Minority Tester
+  "wht_rcredchk", # Agent Said Credit Check Required, White Tester
+  "min_rcrimchk", # Agent Said Criminal Check Required, Minority Tester
+  "wht_rcrimchk" # Agent Said Criminal Check Required, White Tester
+)
+```
+
+
+```{r}
+# Load intermediate rental data.  Each record represents one completed test that passed quality review.
+# Only load the relevant columns as this is a very large file
+rental.int.data <- read_sas("data/HDS_intermediate_data/rental_intermediate.sas7bdat", col_select = all_of(disc.cols))
+```
+
+
+```{r}
+# Create 2 flags that are equal to 1 if only the minority tester was asked to provide a credit check and a criminal check respectively
+rental.int.data <- rental.int.data %>%
+  mutate(min_only_credit = case_when(min_rcredchk == 1 & wht_rcredchk == 0 ~ 1, TRUE ~ 0),
+         min_only_criminal = case_when(min_rcrimchk == 1 & wht_rcrimchk == 0 ~ 1, TRUE ~ 0))
+
+# Create normalized composite score of discrimination that is the mean of all the dependent variables in the data 
+rental.int.data <- rental.int.data %>%
+  mutate(disc_score_norm = rowMeans(across(-c("CONTROL", "min_rcredchk", "wht_rcredchk", "min_rcrimchk", "wht_rcrimchk")), na.rm = TRUE)) # not sure if I should be using means or sums
+
+head(rental.int.data)
+
+```
+
+
+```{r}
+# Inner join tester data to rental data 
+aa.tester.data <- inner_join(aa.tester.data, rental.int.data, by = "CONTROL")
+```
+
+```{r}
+# Create new fields for reconfigure sex and skin tone variable
+
+aa.tester.data$Skintone[is.na(aa.tester.data$Skintone)] <- "Unknown"
+
+aa.tester.data <- aa.tester.data %>%
+  mutate(sex = case_when(TSEX == 0 ~ "Female", TSEX == 1 ~ "Male"),
+         skin_tone_clean = case_when(Skintone == 1 ~ "Light", Skintone == 2 ~ "Somewhat Light", Skintone == 3 ~ "Somewhat Dark", Skintone == 4 ~ "Dark"))
+
+# Convert skin_tone_clean to a factor with specified levels
+aa.tester.data$skin_tone_clean <- factor(aa.tester.data$skin_tone_clean, levels =  c("Light", "Somewhat Light", "Somewhat Dark", "Dark"))
+```
+
+```{r}
+custom_theme <- theme_wsj() +
+  theme(
+    # Plot titles
+    plot.title = element_text(size = 20, face = "bold"),
+    plot.subtitle = element_text(size = 10),
+    
+    axis.title.x = element_text(size = 10, margin = margin(t = 20)),
+    axis.text.x = element_text(size = 8),
+    
+    axis.text.y = element_text(size = 8),
+    
+    
+    # axis.line = element_line(arrow = arrow(type='closed', length = unit(5,'pt'))), 
+    
+    legend.position = "none"
+  )
+
+theme_set(custom_theme)
+```
+
+
+```{r}
+
+p <- ggplot(aa.tester.data[complete.cases(aa.tester.data), ], aes(x = disc_score_norm, y = skin_tone_clean, fill = skin_tone_clean)) +
+     geom_density_ridges(alpha = 0.8, color = "orange3") +
+     scale_fill_discrete_sequential(palette = "YlOrBr") + 
+     labs(
+         x = "Discrimination Score", 
+         y = "Tester Skin Tone",
+         title = "Colorism and Rental Discrimination",
+         subtitle = "Does a tester's skintone impact the discrimination they face?",
+         caption = "Source: HUD Housing Discrimination Against Racial And Ethnic Minorities 2012 Dataset"
+         ) 
+p + theme(plot.caption = element_text(size = 5, color = "gray", margin = margin(t = 15))) +
+    scale_x_continuous(labels = c("Very Low", "Low", "Moderate", "High", "Very High", "Extreme" ))  # Add custom axis values to improve comprehension
+
+
+# ggsave("plots/colorism-x-discrimination.png")
+
+
+```
+
+```{r}
+# Create a lollipop plot to show the difference in discrimination grouped by gender and skin tone
+
+# First, create grouped version of the data that summarizes the points we want to plot for each group
+sex.color.df <- aa.tester.data %>%
+  group_by(skin_tone_clean, sex) %>%
+  summarise_at(vars(disc_score_norm), list(mean=mean))
+
+sex.color.df
+```
+
+```{r}
+# Dumbbell plot
+ggplot(sex.color.df[complete.cases(sex.color.df), ], aes(x = mean, y = skin_tone_clean)) +
+  geom_point(aes(color = sex), size = 5) +      # Points for male and female scores
+  geom_segment(aes(xend = mean, yend = skin_tone_clean), color = "black") +   # Line for scores
+  theme_wsj() +
+  labs(title = "Discrimination Scores by Gender and Skintone", 
+       x = "Average Score", 
+       y = "Skintone") +
+  scale_color_manual(values = c("Male" = "orange", "Female" = "purple")) 
+  # + scale_x_continuous(breaks = seq(0, 0.5, by = 0.1), limits = c(0, 0.5))
+
+#Look at x-axis
+# When does the last piece of code take precedence
+# add 3rd dot for average across both sexes for that skintone
+```
+
+
+
